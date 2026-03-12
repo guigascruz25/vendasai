@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Documentos{% endblock %}
+{% block page_title %}📄 Documentos{% endblock %}
+
+{% block content %}
+
+<!-- Upload card -->
+<div class="card" style="margin-bottom:20px">
+  <div class="section-title" style="margin-bottom:16px">Subir novo PDF</div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div class="form-group" style="margin:0;flex:1;min-width:160px">
+      <label class="form-label">Categoria</label>
+      <select class="form-select" id="upload-category">
+        <option value="produto">Informações do Produto</option>
+        <option value="objecoes">Quebra de Objeções</option>
+        <option value="scripts">Scripts de Vendas</option>
+        <option value="faq">Perguntas Frequentes</option>
+        <option value="geral">Geral</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <div class="upload-icon">📁</div>
+    <div class="upload-text">
+      <strong>Clique para escolher</strong> ou arraste um PDF aqui<br>
+      <span style="font-size:11px">Máximo 30 MB · Apenas PDF</span>
+    </div>
+    <input type="file" id="file-input" accept=".pdf" onchange="uploadFile(this.files[0])">
+  </div>
+
+  <div id="upload-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px"></div>
+</div>
+
+<!-- Documents table -->
+<div class="card">
+  <div class="section-title" style="margin-bottom:16px">Documentos carregados <span style="color:var(--muted);font-weight:400;font-size:12px">({{ docs|length }})</span></div>
+
+  {% if docs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Arquivo</th>
+          <th>Categoria</th>
+          <th>Páginas</th>
+          <th>Tamanho</th>
+          <th>Data</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="docs-table">
+        {% for doc in docs %}
+        <tr id="doc-row-{{ doc.id }}">
+          <td style="font-weight:500;color:var(--text)">{{ doc.filename }}</td>
+          <td>
+            {% set cat_labels = {'produto':'Produto','objecoes':'Objeções','scripts':'Scripts','faq':'FAQ','geral':'Geral'} %}
+            <span class="badge badge-blue">{{ cat_labels.get(doc.category, doc.category) }}</span>
+          </td>
+          <td style="font-family:var(--font-mono)">{{ doc.page_count or '—' }}</td>
+          <td style="font-family:var(--font-mono)">{{ (doc.file_size / 1024)|int }}KB</td>
+          <td style="color:var(--muted)">{{ doc.uploaded_at[:10] if doc.uploaded_at else '—' }}</td>
+          <td>
+            {% if doc.active %}
+            <span class="badge badge-green">Ativo</span>
+            {% else %}
+            <span class="badge badge-gray">Inativo</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm" onclick="toggleDoc({{ doc.id }})">
+                {{ '⏸ Desativar' if doc.active else '▶ Ativar' }}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteDoc({{ doc.id }})">🗑</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:40px;color:var(--muted)">
+    <div style="font-size:36px;margin-bottom:8px;opacity:0.4">📭</div>
+    <div>Nenhum documento ainda. Suba o primeiro PDF acima.</div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Drag and drop
+var zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+zone.addEventListener('drop', function(e) {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  var f = e.dataTransfer.files[0];
+  if (f) uploadFile(f);
+});
+
+async function uploadFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    toast('Apenas arquivos PDF são aceitos.', 'error'); return;
+  }
+
+  var status = document.getElementById('upload-status');
+  status.style.display = 'block';
+  status.style.background = 'var(--info-soft)';
+  status.style.color = 'var(--info)';
+  status.textContent = '⏳ Enviando e extraindo texto... Aguarde.';
+
+  var formData = new FormData();
+  formData.append('file', file);
+  formData.append('category', document.getElementById('upload-category').value);
+
+  try {
+    var resp = await fetch('/admin/docs/upload', { method: 'POST', body: formData });
+    var data = await resp.json();
+    if (!resp.ok) {
+      status.style.background = 'var(--danger-soft)';
+      status.style.color = 'var(--danger)';
+      status.textContent = '❌ ' + (data.error || 'Erro ao subir arquivo.');
+      return;
+    }
+    status.style.background = 'var(--success-soft)';
+    status.style.color = 'var(--success)';
+    status.textContent = '✅ ' + file.name + ' carregado! ' + data.pages + ' páginas, ' + data.chars + ' caracteres extraídos.';
+    toast('Documento adicionado com sucesso!', 'success');
+    setTimeout(function() { location.reload(); }, 1500);
+  } catch(e) {
+    status.style.background = 'var(--danger-soft)';
+    status.style.color = 'var(--danger)';
+    status.textContent = '❌ Erro de conexão.';
+  }
+}
+
+async function toggleDoc(id) {
+  try {
+    await apiPost('/admin/docs/' + id + '/toggle');
+    toast('Status atualizado.', 'success');
+    setTimeout(function() { location.reload(); }, 800);
+  } catch(e) {
+    toast('Erro ao atualizar.', 'error');
+  }
+}
+
+async function deleteDoc(id) {
+  if (!confirm('Remover este documento?')) return;
+  try {
+    await apiPost('/admin/docs/' + id + '/delete');
+    var row = document.getElementById('doc-row-' + id);
+    if (row) row.remove();
+    toast('Documento removido.', 'success');
+  } catch(e) {
+    toast('Erro ao remover.', 'error');
+  }
+}
+</script>
+{% endblock %}

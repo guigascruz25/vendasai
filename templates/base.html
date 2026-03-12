@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VendasAI · {% block title %}{% endblock %}</title>
+<link rel="stylesheet" href="/static/css/vendasai.css">
+<script>
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+</head>
+<body>
+
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">V</div>
+    <div class="logo-text">Vendas<span>AI</span></div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="/chat" class="nav-item {% if active == 'chat' %}active{% endif %}">
+      <span class="nav-icon">💬</span> Chat IA
+    </a>
+    {% if session.get('role') == 'admin' %}
+    <div class="nav-section-label" style="margin-top:10px">Administração</div>
+    <a href="/admin/docs" class="nav-item {% if active == 'docs' %}active{% endif %}">
+      <span class="nav-icon">📄</span> Documentos
+    </a>
+    <a href="/admin/users" class="nav-item {% if active == 'users' %}active{% endif %}">
+      <span class="nav-icon">👥</span> Equipe
+    </a>
+    <a href="/admin/config" class="nav-item {% if active == 'config' %}active{% endif %}">
+      <span class="nav-icon">⚙️</span> Configurações
+    </a>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="user-avatar">{{ session.get('username','?')[0].upper() }}</div>
+    <div style="flex:1;min-width:0">
+      <div class="user-name">{{ session.get('username','') }}</div>
+      <div class="user-role">{{ 'Admin' if session.get('role') == 'admin' else 'Vendedor' }}</div>
+    </div>
+    <a href="/logout" style="color:var(--muted);font-size:18px;text-decoration:none" title="Sair">⏻</a>
+  </div>
+</div>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<div class="main-wrap">
+  <div class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger-btn" onclick="toggleSidebar()">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="page-title">{% block page_title %}{% endblock %}</div>
+    </div>
+    <div class="topbar-right">
+      {% block topbar_right %}{% endblock %}
+      <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema" id="theme-btn">🌙</button>
+    </div>
+  </div>
+
+  {% block body %}
+  <div class="content">
+    {% block content %}{% endblock %}
+  </div>
+  {% endblock %}
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script>
+// Theme
+function toggleTheme() {
+  var html = document.documentElement;
+  var current = html.getAttribute('data-theme');
+  var next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  document.getElementById('theme-btn').textContent = next === 'dark' ? '☀️' : '🌙';
+}
+(function(){
+  var t = localStorage.getItem('theme') || 'light';
+  var btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = t === 'dark' ? '☀️' : '🌙';
+})();
+
+// Sidebar mobile
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+document.querySelectorAll('.nav-item').forEach(function(el) {
+  el.addEventListener('click', function() { if (window.innerWidth <= 768) closeSidebar(); });
+});
+window.addEventListener('resize', function() { if (window.innerWidth > 768) closeSidebar(); });
+
+// Toast
+function toast(msg, type) {
+  type = type || 'info';
+  var c = document.getElementById('toast-container');
+  var t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(function() { t.remove(); }, 3500);
+}
+
+// Generic fetch helpers
+async function apiPost(url, data) {
+  var r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {})
+  });
+  var j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+  return j;
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

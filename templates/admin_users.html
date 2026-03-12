@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Equipe{% endblock %}
+{% block page_title %}👥 Equipe{% endblock %}
+
+{% block content %}
+
+<!-- Add user card -->
+<div class="card" style="margin-bottom:20px">
+  <div class="section-title" style="margin-bottom:16px">Adicionar membro</div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <div class="form-group" style="margin:0;flex:1;min-width:140px">
+      <label class="form-label">Usuário</label>
+      <input class="form-input" type="text" id="new-username" placeholder="nome_usuario">
+    </div>
+    <div class="form-group" style="margin:0;flex:1;min-width:140px">
+      <label class="form-label">Senha</label>
+      <input class="form-input" type="text" id="new-password" placeholder="senha inicial">
+    </div>
+    <div class="form-group" style="margin:0;min-width:120px">
+      <label class="form-label">Papel</label>
+      <select class="form-select" id="new-role">
+        <option value="member">Vendedor</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="addUser()">+ Adicionar</button>
+  </div>
+</div>
+
+<!-- Users table -->
+<div class="card">
+  <div class="section-title" style="margin-bottom:16px">Membros <span style="color:var(--muted);font-weight:400;font-size:12px">({{ users|length }})</span></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>Papel</th>
+          <th>Criado em</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="users-table">
+        {% for user in users %}
+        <tr id="user-row-{{ user.id }}">
+          <td style="font-weight:600;color:var(--text)">{{ user.username }}</td>
+          <td>
+            {% if user.role == 'admin' %}
+            <span class="badge badge-orange">Admin</span>
+            {% else %}
+            <span class="badge badge-blue">Vendedor</span>
+            {% endif %}
+          </td>
+          <td style="color:var(--muted)">{{ user.created_at[:10] if user.created_at else '—' }}</td>
+          <td>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="text" placeholder="nova senha" id="pw-{{ user.id }}"
+                     class="form-input" style="width:130px;padding:5px 8px;font-size:12px">
+              <button class="btn btn-ghost btn-sm" onclick="changePassword({{ user.id }})">🔒</button>
+              {% if user.username != session.get('username') %}
+              <button class="btn btn-danger btn-sm" onclick="deleteUser({{ user.id }})">🗑</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function addUser() {
+  var username = document.getElementById('new-username').value.trim();
+  var password = document.getElementById('new-password').value.trim();
+  var role = document.getElementById('new-role').value;
+  if (!username || !password) { toast('Preencha usuário e senha.', 'error'); return; }
+  try {
+    await apiPost('/admin/users/add', {username, password, role});
+    toast('Usuário criado!', 'success');
+    setTimeout(function() { location.reload(); }, 800);
+  } catch(e) {
+    toast(e.message || 'Erro ao criar usuário.', 'error');
+  }
+}
+
+async function deleteUser(id) {
+  if (!confirm('Remover este usuário?')) return;
+  try {
+    await apiPost('/admin/users/' + id + '/delete');
+    var row = document.getElementById('user-row-' + id);
+    if (row) row.remove();
+    toast('Usuário removido.', 'success');
+  } catch(e) {
+    toast(e.message || 'Erro ao remover.', 'error');
+  }
+}
+
+async function changePassword(id) {
+  var pw = document.getElementById('pw-' + id).value.trim();
+  if (!pw) { toast('Digite a nova senha.', 'error'); return; }
+  try {
+    await apiPost('/admin/users/' + id + '/password', {password: pw});
+    document.getElementById('pw-' + id).value = '';
+    toast('Senha alterada!', 'success');
+  } catch(e) {
+    toast(e.message || 'Erro ao alterar senha.', 'error');
+  }
+}
+</script>
+{% endblock %}

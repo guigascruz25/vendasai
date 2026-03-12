@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Chat{% endblock %}
+{% block page_title %}💬 Assistente de Vendas{% endblock %}
+
+{% block topbar_right %}
+<button class="btn btn-ghost btn-sm" onclick="clearChat()" title="Limpar conversa">🗑 Limpar</button>
+{% endblock %}
+
+{% block body %}
+<div class="chat-wrap">
+
+  <div class="chat-messages" id="chat-messages">
+    {% if history %}
+      {% for msg in history %}
+      <div class="chat-msg {{ msg.role }}">
+        <div class="msg-avatar">{{ 'V' if msg.role == 'user' else 'IA' }}</div>
+        <div>
+          <div class="msg-bubble">{{ msg.content }}</div>
+          <div class="msg-time">{{ msg.ts[:16] if msg.ts else '' }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="chat-empty" id="chat-empty">
+        <div class="chat-empty-icon">🤖</div>
+        <h3>Olá, {{ session.get('username', '') }}!</h3>
+        <p>Sou seu assistente de vendas. Pergunte sobre o produto, como lidar com objeções, scripts de abordagem e muito mais.</p>
+        <div class="chat-suggestions">
+          <div class="suggestion-chip" onclick="suggest(this)">Quais são os principais benefícios?</div>
+          <div class="suggestion-chip" onclick="suggest(this)">Como responder "está caro"?</div>
+          <div class="suggestion-chip" onclick="suggest(this)">Script de abertura</div>
+          <div class="suggestion-chip" onclick="suggest(this)">Como fechar a venda?</div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="chat-input-bar">
+    <textarea
+      class="chat-textarea"
+      id="chat-input"
+      placeholder="Pergunte sobre o produto, objeções, scripts..."
+      rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"
+      oninput="autoResize(this)"></textarea>
+    <button class="chat-send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var sending = false;
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function suggest(el) {
+  document.getElementById('chat-input').value = el.textContent;
+  document.getElementById('chat-empty')?.remove();
+  sendMessage();
+}
+
+function scrollToBottom() {
+  var msgs = document.getElementById('chat-messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendMsg(role, content, time) {
+  var empty = document.getElementById('chat-empty');
+  if (empty) empty.remove();
+
+  var msgs = document.getElementById('chat-messages');
+  var div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+
+  var avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = role === 'user' ? '{{ session.get("username","V")[0].upper() }}' : 'IA';
+
+  var inner = document.createElement('div');
+  var bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = content;
+
+  var ts = document.createElement('div');
+  ts.className = 'msg-time';
+  ts.textContent = time || '';
+
+  inner.appendChild(bubble);
+  inner.appendChild(ts);
+  div.appendChild(avatar);
+  div.appendChild(inner);
+  msgs.appendChild(div);
+  scrollToBottom();
+  return bubble;
+}
+
+function showTyping() {
+  var msgs = document.getElementById('chat-messages');
+  var div = document.createElement('div');
+  div.className = 'chat-msg assistant';
+  div.id = 'typing-indicator';
+
+  var avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = 'IA';
+
+  var typing = document.createElement('div');
+  typing.className = 'typing-indicator';
+  typing.innerHTML = '<span></span><span></span><span></span>';
+
+  div.appendChild(avatar);
+  div.appendChild(typing);
+  msgs.appendChild(div);
+  scrollToBottom();
+}
+
+function removeTyping() {
+  var el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+async function sendMessage() {
+  if (sending) return;
+  var input = document.getElementById('chat-input');
+  var msg = input.value.trim();
+  if (!msg) return;
+
+  sending = true;
+  document.getElementById('send-btn').disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+
+  var now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  appendMsg('user', msg, now);
+  showTyping();
+
+  try {
+    var resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg})
+    });
+
+    if (!resp.ok) {
+      removeTyping();
+      toast('Erro ao enviar mensagem. Tente novamente.', 'error');
+      sending = false;
+      document.getElementById('send-btn').disabled = false;
+      return;
+    }
+
+    removeTyping();
+    var bubble = appendMsg('assistant', '', now);
+    bubble.innerHTML = '<span class="stream-cursor"></span>';
+    var fullText = '';
+
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          var data = JSON.parse(line.slice(6));
+          if (data.text) {
+            fullText += data.text;
+            bubble.textContent = fullText;
+          }
+          if (data.done) break;
+          if (data.error) {
+            bubble.textContent = 'Erro: ' + data.error;
+            break;
+          }
+        } catch(e) {}
+      }
+    }
+
+    // Final clean render
+    bubble.textContent = fullText;
+
+  } catch(e) {
+    removeTyping();
+    toast('Erro de conexão.', 'error');
+  }
+
+  sending = false;
+  document.getElementById('send-btn').disabled = false;
+  input.focus();
+}
+
+async function clearChat() {
+  if (!confirm('Limpar todo o histórico desta conversa?')) return;
+  try {
+    await apiPost('/api/chat/clear');
+    document.getElementById('chat-messages').innerHTML = `
+      <div class="chat-empty" id="chat-empty">
+        <div class="chat-empty-icon">🤖</div>
+        <h3>Conversa limpa!</h3>
+        <p>Pode começar uma nova pergunta.</p>
+      </div>`;
+    toast('Histórico limpo.', 'success');
+  } catch(e) {
+    toast('Erro ao limpar.', 'error');
+  }
+}
+
+// Scroll to bottom on load
+scrollToBottom();
+</script>
+{% endblock %}

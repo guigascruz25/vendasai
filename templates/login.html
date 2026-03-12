@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VendasAI · Login</title>
+<link rel="stylesheet" href="/static/css/vendasai.css">
+<script>(function(){ var t=localStorage.getItem('theme')||'light'; document.documentElement.setAttribute('data-theme',t); })();</script>
+</head>
+<body style="display:block">
+
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">V</div>
+      <div class="logo-text">Vendas<span>AI</span></div>
+    </div>
+    <div class="login-title">Central de Atendimento Comercial</div>
+
+    {% if error %}
+    <div class="login-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="form-group">
+        <label class="form-label">Usuário</label>
+        <input class="form-input" type="text" name="username" placeholder="seu usuário"
+               autocomplete="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input class="form-input" type="password" name="password" placeholder="••••••••"
+               autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-submit">Entrar</button>
+    </form>
+
+    <div class="login-footer">VendasAI · by Tuca Tech</div>
+  </div>
+</div>
+
+</body>
+</html>

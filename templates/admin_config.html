@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Configurações{% endblock %}
+{% block page_title %}⚙️ Configurações{% endblock %}
+
+{% block content %}
+
+<div class="card" style="max-width:640px">
+  <div class="section-title" style="margin-bottom:20px">Configurações da IA</div>
+
+  <div class="form-group">
+    <label class="form-label">Anthropic API Key</label>
+    <input class="form-input" type="password" id="cfg-api-key"
+           placeholder="sk-ant-api03-..."
+           value="{{ cfg.get('anthropic_api_key','') }}">
+    <div class="form-hint">Chave da API Claude. Se vazia, usa a variável de ambiente ANTHROPIC_API_KEY.</div>
+  </div>
+
+  <div class="form-group">
+    <label class="form-label">Prompt do sistema (opcional)</label>
+    <textarea class="form-input" id="cfg-system-prompt" rows="8"
+              placeholder="Deixe vazio para usar o prompt padrão..."
+              style="resize:vertical;font-family:var(--font-mono);font-size:12px">{{ cfg.get('system_prompt','') }}</textarea>
+    <div class="form-hint">Personalize como a IA se comporta. Use <code>{doc_context}</code> para incluir os documentos.</div>
+  </div>
+
+  <button class="btn btn-primary" onclick="saveConfig()">💾 Salvar</button>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveConfig() {
+  var data = {
+    anthropic_api_key: document.getElementById('cfg-api-key').value.trim(),
+    system_prompt: document.getElementById('cfg-system-prompt').value.trim(),
+  };
+  try {
+    await apiPost('/admin/config/save', data);
+    toast('Configurações salvas!', 'success');
+  } catch(e) {
+    toast('Erro ao salvar.', 'error');
+  }
+}
+</script>
+{% endblock %}
