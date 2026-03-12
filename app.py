@@ -18,7 +18,7 @@ from db import (init_db, get_user_by_username, get_all_users, create_user,
                 delete_user, update_user_password,
                 save_document, get_all_documents, toggle_document, delete_document,
                 save_chat_message, get_chat_history, clear_chat_history,
-                get_config, save_config)
+                get_config, save_config, get_stats)
 from rag import build_system_prompt, extract_pdf_text
 
 import anthropic
@@ -159,21 +159,33 @@ def page_admin_config():
     return render_template("admin_config.html", active="config", cfg=cfg)
 
 
+@app.route("/admin/stats")
+@admin_required
+def page_admin_stats():
+    stats = get_stats()
+    return render_template("admin_stats.html", active="stats", stats=stats)
+
+
 # ── API: Chat ─────────────────────────────────────────────────────────
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def api_chat():
     data = request.get_json() or {}
     user_message = data.get("message", "").strip()
+    mode = data.get("mode", "assistente")
+    if mode not in ("assistente", "treino", "analise"):
+        mode = "assistente"
     if not user_message:
         return jsonify({"error": "Mensagem vazia"}), 400
 
-    save_chat_message(g.user_id, "user", user_message)
+    save_chat_message(g.user_id, "user", user_message, mode)
 
     history = get_chat_history(g.user_id, limit=12)
     messages = [{"role": r["role"], "content": r["content"]} for r in history]
 
-    system = build_system_prompt()
+    cfg = get_config()
+    custom_prompt = cfg.get("system_prompt") or None
+    system = build_system_prompt(mode=mode, custom_prompt=custom_prompt)
     client = get_anthropic_client()
 
     def generate():
@@ -192,7 +204,7 @@ def api_chat():
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
             if full_response:
-                save_chat_message(g.user_id, "assistant", full_response)
+                save_chat_message(g.user_id, "assistant", full_response, mode)
             yield f"data: {json.dumps({'done': True})}\n\n"
 
     return Response(

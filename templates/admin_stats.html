@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Insights{% endblock %}
+{% block page_title %}📊 Insights do Time{% endblock %}
+
+{% block content %}
+
+<!-- KPI row -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
+  <div class="card" style="text-align:center;padding:20px 14px">
+    <div style="font-size:28px;font-weight:800;color:var(--primary)">{{ stats.total_msgs }}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">Perguntas feitas</div>
+  </div>
+  <div class="card" style="text-align:center;padding:20px 14px">
+    <div style="font-size:28px;font-weight:800;color:var(--success)">{{ stats.by_user|length }}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">Vendedores ativos</div>
+  </div>
+  {% for item in stats.by_mode %}
+  <div class="card" style="text-align:center;padding:20px 14px">
+    <div style="font-size:28px;font-weight:800;color:var(--info)">{{ item.total }}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">
+      {% if item.mode == 'assistente' %}🤖 Assistente
+      {% elif item.mode == 'treino' %}🎭 Treino
+      {% elif item.mode == 'analise' %}🔍 Análise
+      {% else %}{{ item.mode }}{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+  <!-- Atividade por vendedor -->
+  <div class="card">
+    <div class="section-title" style="margin-bottom:14px">👤 Atividade por vendedor</div>
+    {% if stats.by_user %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Vendedor</th><th>Perguntas</th><th>Última atividade</th></tr></thead>
+        <tbody>
+          {% for u in stats.by_user %}
+          <tr>
+            <td style="font-weight:600">{{ u.username }}</td>
+            <td><span class="badge badge-orange">{{ u.total }}</span></td>
+            <td style="color:var(--muted);font-size:12px">{{ u.last_activity[:16] if u.last_activity else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Nenhuma atividade ainda.</div>
+    {% endif %}
+  </div>
+
+  <!-- Top perguntas -->
+  <div class="card">
+    <div class="section-title" style="margin-bottom:14px">🔁 Perguntas mais frequentes</div>
+    {% if stats.top_questions %}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for q in stats.top_questions %}
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--table-head);border-radius:var(--radius-sm)">
+        {% if q.freq > 1 %}
+        <span class="badge badge-orange" style="flex-shrink:0;margin-top:1px">{{ q.freq }}x</span>
+        {% endif %}
+        <span style="font-size:12px;color:var(--text2);line-height:1.5">{{ q.content[:120] }}{% if q.content|length > 120 %}...{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Nenhuma pergunta ainda.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Atividade recente -->
+<div class="card">
+  <div class="section-title" style="margin-bottom:14px">⏱ Atividade recente</div>
+  {% if stats.recent %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Vendedor</th><th>Modo</th><th>Pergunta</th><th>Hora</th></tr></thead>
+      <tbody>
+        {% for r in stats.recent %}
+        <tr>
+          <td style="font-weight:600;white-space:nowrap">{{ r.username }}</td>
+          <td>
+            {% if r.mode == 'assistente' %}<span class="badge badge-blue">🤖 Assistente</span>
+            {% elif r.mode == 'treino' %}<span class="badge badge-green">🎭 Treino</span>
+            {% elif r.mode == 'analise' %}<span class="badge badge-orange">🔍 Análise</span>
+            {% else %}<span class="badge badge-gray">{{ r.mode }}</span>{% endif %}
+          </td>
+          <td style="max-width:420px;color:var(--text2);font-size:12px">{{ r.content[:100] }}{% if r.content|length > 100 %}...{% endif %}</td>
+          <td style="color:var(--muted);font-size:12px;white-space:nowrap">{{ r.ts[:16] if r.ts else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Nenhuma atividade ainda.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

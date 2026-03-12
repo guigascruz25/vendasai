@@ -1,19 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Chat{% endblock %}
-{% block page_title %}💬 Assistente de Vendas{% endblock %}
+{% block page_title %}
+<div style="display:flex;align-items:center;gap:10px">
+  <span id="mode-title">🤖 Assistente</span>
+</div>
+{% endblock %}
 
 {% block topbar_right %}
-<button class="btn btn-ghost btn-sm" onclick="clearChat()" title="Limpar conversa">🗑 Limpar</button>
+<div class="mode-toggle" id="mode-toggle">
+  <button class="mode-btn active" data-mode="assistente" onclick="setMode('assistente')">🤖 Assistente</button>
+  <button class="mode-btn" data-mode="treino" onclick="setMode('treino')">🎭 Treino</button>
+  <button class="mode-btn" data-mode="analise" onclick="setMode('analise')">🔍 Análise</button>
+</div>
+<button class="btn btn-ghost btn-sm" onclick="clearChat()" title="Limpar conversa" style="margin-left:6px">🗑</button>
 {% endblock %}
 
 {% block body %}
 <div class="chat-wrap">
 
+  <!-- Mode hint bar -->
+  <div class="mode-hint" id="mode-hint-assistente">
+    💡 <strong>Modo Assistente</strong> — Tire dúvidas sobre o produto, peça scripts prontos e tratamento de objeções.
+  </div>
+  <div class="mode-hint mode-hint-treino" id="mode-hint-treino" style="display:none">
+    🎭 <strong>Modo Treino</strong> — A IA vai simular um cliente difícil. Pratique seu pitch e tratamento de objeções em tempo real.
+  </div>
+  <div class="mode-hint mode-hint-analise" id="mode-hint-analise" style="display:none">
+    🔍 <strong>Modo Análise</strong> — Descreva uma situação real (cliente sumiu, proposta enviada, objeção recebida) e receba diagnóstico + próximo passo exato.
+  </div>
+
   <div class="chat-messages" id="chat-messages">
     {% if history %}
       {% for msg in history %}
       <div class="chat-msg {{ msg.role }}">
-        <div class="msg-avatar">{{ 'V' if msg.role == 'user' else 'IA' }}</div>
+        <div class="msg-avatar">{{ session.get('username','V')[0].upper() if msg.role == 'user' else 'IA' }}</div>
         <div>
           <div class="msg-bubble">{{ msg.content }}</div>
           <div class="msg-time">{{ msg.ts[:16] if msg.ts else '' }}</div>
@@ -21,17 +41,12 @@
       </div>
       {% endfor %}
     {% else %}
-      <div class="chat-empty" id="chat-empty">
-        <div class="chat-empty-icon">🤖</div>
-        <h3>Olá, {{ session.get('username', '') }}!</h3>
-        <p>Sou seu assistente de vendas. Pergunte sobre o produto, como lidar com objeções, scripts de abordagem e muito mais.</p>
-        <div class="chat-suggestions">
-          <div class="suggestion-chip" onclick="suggest(this)">Quais são os principais benefícios?</div>
-          <div class="suggestion-chip" onclick="suggest(this)">Como responder "está caro"?</div>
-          <div class="suggestion-chip" onclick="suggest(this)">Script de abertura</div>
-          <div class="suggestion-chip" onclick="suggest(this)">Como fechar a venda?</div>
-        </div>
-      </div>
+    <div class="chat-empty" id="chat-empty">
+      <div class="chat-empty-icon" id="empty-icon">🤖</div>
+      <h3 id="empty-title">Olá, {{ session.get('username', '') }}!</h3>
+      <p id="empty-desc">Escolha um modo acima e comece a usar. Estou pronto para ajudar seu time a vender mais.</p>
+      <div class="chat-suggestions" id="chip-container"></div>
+    </div>
     {% endif %}
   </div>
 
@@ -39,7 +54,7 @@
     <textarea
       class="chat-textarea"
       id="chat-input"
-      placeholder="Pergunte sobre o produto, objeções, scripts..."
+      placeholder="Digite sua pergunta..."
       rows="1"
       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"
       oninput="autoResize(this)"></textarea>
@@ -50,17 +65,108 @@
 
 {% block scripts %}
 <script>
+var currentMode = 'assistente';
 var sending = false;
+
+var MODES = {
+  assistente: {
+    title: '🤖 Assistente',
+    icon: '🤖',
+    heading: 'Como posso ajudar?',
+    desc: 'Pergunte sobre o produto, peça scripts prontos ou tratamento de objeções específicas.',
+    placeholder: 'Ex: Como responder "está caro"?',
+    chips: [
+      'Quais os principais benefícios do produto?',
+      'Como responder "está caro"?',
+      'Script de abertura no WhatsApp',
+      'Cliente comparou com concorrente',
+      'Como fechar quando o cliente hesita?',
+      'Gatilhos de urgência para usar',
+    ]
+  },
+  treino: {
+    title: '🎭 Treino',
+    icon: '🎭',
+    heading: 'Hora de treinar!',
+    desc: 'A IA vai simular um cliente difícil. Diga "iniciar treino" para começar ou escolha um perfil de cliente.',
+    placeholder: 'Diga "iniciar treino" ou descreva o perfil do cliente...',
+    chips: [
+      'Iniciar treino — cliente resistente a preço',
+      'Iniciar treino — cliente indeciso',
+      'Iniciar treino — cliente que já tem fornecedor',
+      'Iniciar treino — cliente que quer descontar tudo',
+      'Iniciar treino — cliente sumido após proposta',
+    ]
+  },
+  analise: {
+    title: '🔍 Análise',
+    icon: '🔍',
+    heading: 'Descreva a situação',
+    desc: 'Explique o que está acontecendo com o cliente. Você recebe diagnóstico, causa raiz e script pronto para agir agora.',
+    placeholder: 'Ex: Enviei proposta há 3 dias, cliente viu no WhatsApp e não respondeu...',
+    chips: [
+      'Enviei proposta e o cliente sumiu',
+      'Cliente disse que está caro e desapareceu',
+      'Cliente quer desconto, o que faço?',
+      'Prospect quente que travou na hora de decidir',
+      'Cliente disse "vou pensar" faz uma semana',
+      'Concorrente ofereceu preço menor',
+    ]
+  }
+};
+
+function setMode(mode) {
+  currentMode = mode;
+
+  // Update toggle buttons
+  document.querySelectorAll('.mode-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+
+  // Update title
+  document.getElementById('mode-title').textContent = MODES[mode].title;
+
+  // Update hints
+  ['assistente','treino','analise'].forEach(function(m) {
+    document.getElementById('mode-hint-' + m).style.display = m === mode ? 'flex' : 'none';
+  });
+
+  // Update empty state
+  var empty = document.getElementById('chat-empty');
+  if (empty) {
+    document.getElementById('empty-icon').textContent = MODES[mode].icon;
+    document.getElementById('empty-title').textContent = MODES[mode].heading;
+    document.getElementById('empty-desc').textContent = MODES[mode].desc;
+    renderChips(mode);
+  }
+
+  // Update placeholder
+  document.getElementById('chat-input').placeholder = MODES[mode].placeholder;
+}
+
+function renderChips(mode) {
+  var container = document.getElementById('chip-container');
+  if (!container) return;
+  container.innerHTML = '';
+  MODES[mode].chips.forEach(function(text) {
+    var chip = document.createElement('div');
+    chip.className = 'suggestion-chip';
+    chip.textContent = text;
+    chip.onclick = function() { suggest(text); };
+    container.appendChild(chip);
+  });
+}
+
+function suggest(text) {
+  document.getElementById('chat-input').value = text;
+  var empty = document.getElementById('chat-empty');
+  if (empty) empty.remove();
+  sendMessage();
+}
 
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-}
-
-function suggest(el) {
-  document.getElementById('chat-input').value = el.textContent;
-  document.getElementById('chat-empty')?.remove();
-  sendMessage();
 }
 
 function scrollToBottom() {
@@ -142,12 +248,12 @@ async function sendMessage() {
     var resp = await fetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: msg})
+      body: JSON.stringify({message: msg, mode: currentMode})
     });
 
     if (!resp.ok) {
       removeTyping();
-      toast('Erro ao enviar mensagem. Tente novamente.', 'error');
+      toast('Erro ao enviar. Tente novamente.', 'error');
       sending = false;
       document.getElementById('send-btn').disabled = false;
       return;
@@ -175,17 +281,12 @@ async function sendMessage() {
           if (data.text) {
             fullText += data.text;
             bubble.textContent = fullText;
+            scrollToBottom();
           }
-          if (data.done) break;
-          if (data.error) {
-            bubble.textContent = 'Erro: ' + data.error;
-            break;
-          }
+          if (data.error) { bubble.textContent = '❌ ' + data.error; break; }
         } catch(e) {}
       }
     }
-
-    // Final clean render
     bubble.textContent = fullText;
 
   } catch(e) {
@@ -199,22 +300,24 @@ async function sendMessage() {
 }
 
 async function clearChat() {
-  if (!confirm('Limpar todo o histórico desta conversa?')) return;
+  if (!confirm('Limpar todo o histórico?')) return;
   try {
     await apiPost('/api/chat/clear');
+    var m = MODES[currentMode];
     document.getElementById('chat-messages').innerHTML = `
       <div class="chat-empty" id="chat-empty">
-        <div class="chat-empty-icon">🤖</div>
-        <h3>Conversa limpa!</h3>
-        <p>Pode começar uma nova pergunta.</p>
+        <div class="chat-empty-icon" id="empty-icon">${m.icon}</div>
+        <h3 id="empty-title">${m.heading}</h3>
+        <p id="empty-desc">${m.desc}</p>
+        <div class="chat-suggestions" id="chip-container"></div>
       </div>`;
+    renderChips(currentMode);
     toast('Histórico limpo.', 'success');
-  } catch(e) {
-    toast('Erro ao limpar.', 'error');
-  }
+  } catch(e) { toast('Erro ao limpar.', 'error'); }
 }
 
-// Scroll to bottom on load
+// Init
+renderChips('assistente');
 scrollToBottom();
 </script>
 {% endblock %}

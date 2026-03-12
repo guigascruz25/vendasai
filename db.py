@@ -41,6 +41,7 @@ def init_db():
                 user_id INTEGER NOT NULL REFERENCES users(id),
                 role    TEXT NOT NULL,
                 content TEXT NOT NULL,
+                mode    TEXT DEFAULT 'assistente',
                 ts      TEXT DEFAULT (datetime('now'))
             );
 
@@ -144,22 +145,64 @@ def get_active_documents():
 
 
 # ── Chat History ──────────────────────────────────────────────────────
-def save_chat_message(user_id, role, content):
+def save_chat_message(user_id, role, content, mode="assistente"):
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)",
-            (user_id, role, content)
+            "INSERT INTO chat_history (user_id, role, content, mode) VALUES (?, ?, ?, ?)",
+            (user_id, role, content, mode)
         )
 
 
 def get_chat_history(user_id, limit=20):
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT role, content, ts FROM chat_history
+            """SELECT role, content, mode, ts FROM chat_history
                WHERE user_id = ? ORDER BY id DESC LIMIT ?""",
             (user_id, limit)
         ).fetchall()
         return list(reversed([dict(r) for r in rows]))
+
+
+def get_stats():
+    with get_conn() as conn:
+        total_msgs = conn.execute(
+            "SELECT COUNT(*) FROM chat_history WHERE role = 'user'"
+        ).fetchone()[0]
+
+        msgs_by_user = conn.execute(
+            """SELECT u.username, COUNT(c.id) as total,
+                      MAX(c.ts) as last_activity
+               FROM chat_history c
+               JOIN users u ON u.id = c.user_id
+               WHERE c.role = 'user'
+               GROUP BY c.user_id ORDER BY total DESC"""
+        ).fetchall()
+
+        msgs_by_mode = conn.execute(
+            """SELECT mode, COUNT(*) as total FROM chat_history
+               WHERE role = 'user' GROUP BY mode ORDER BY total DESC"""
+        ).fetchall()
+
+        top_questions = conn.execute(
+            """SELECT content, COUNT(*) as freq FROM chat_history
+               WHERE role = 'user' AND LENGTH(content) > 10
+               GROUP BY content ORDER BY freq DESC LIMIT 15"""
+        ).fetchall()
+
+        recent = conn.execute(
+            """SELECT u.username, c.content, c.mode, c.ts
+               FROM chat_history c JOIN users u ON u.id = c.user_id
+               WHERE c.role = 'user'
+               ORDER BY c.id DESC LIMIT 20"""
+        ).fetchall()
+
+        return {
+            "total_msgs": total_msgs,
+            "by_user": [dict(r) for r in msgs_by_user],
+            "by_mode": [dict(r) for r in msgs_by_mode],
+            "top_questions": [dict(r) for r in top_questions],
+            "recent": [dict(r) for r in recent],
+        }
 
 
 def clear_chat_history(user_id):
