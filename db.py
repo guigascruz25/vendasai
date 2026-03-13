@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "vendasai.db")
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(os.path.dirname(__file__), "vendasai.db")
 
 
 def get_conn():

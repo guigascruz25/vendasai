@@ -21,7 +21,7 @@ from db import (init_db, get_user_by_username, get_all_users, create_user,
                 get_config, save_config, get_stats)
 from rag import build_system_prompt, extract_pdf_text
 
-import anthropic
+from openai import OpenAI
 
 
 # ── App setup ─────────────────────────────────────────────────────────
@@ -53,9 +53,9 @@ UPLOAD_FOLDER = pathlib.Path(__file__).resolve().parent / "uploads"
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 
 
-def get_anthropic_client():
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or get_config().get("anthropic_api_key") or _cfg("ANTHROPIC_API_KEY")
-    return anthropic.Anthropic(api_key=api_key)
+def get_openai_client():
+    api_key = os.environ.get("OPENAI_API_KEY") or get_config().get("openai_api_key") or _cfg("OPENAI_API_KEY")
+    return OpenAI(api_key=api_key)
 
 
 # ── Auth decorators ───────────────────────────────────────────────────
@@ -186,18 +186,20 @@ def api_chat():
     cfg = get_config()
     custom_prompt = cfg.get("system_prompt") or None
     system = build_system_prompt(mode=mode, custom_prompt=custom_prompt)
-    client = get_anthropic_client()
+    client = get_openai_client()
 
     def generate():
         full_response = ""
         try:
-            with client.messages.stream(
-                model="claude-opus-4-5",
+            stream = client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=1024,
-                system=system,
-                messages=messages,
-            ) as stream:
-                for text in stream.text_stream:
+                messages=[{"role": "system", "content": system}] + messages,
+                stream=True,
+            )
+            for chunk in stream:
+                text = chunk.choices[0].delta.content or ""
+                if text:
                     full_response += text
                     yield f"data: {json.dumps({'text': text})}\n\n"
         except Exception as e:
@@ -311,10 +313,15 @@ def api_change_user_password(user_id):
 @admin_required
 def api_save_config():
     data = request.get_json() or {}
-    allowed = {"anthropic_api_key", "system_prompt", "max_context_chars"}
+    allowed = {"openai_api_key", "system_prompt", "max_context_chars"}
     filtered = {k: v for k, v in data.items() if k in allowed}
     save_config(filtered)
     return jsonify({"ok": True})
+
+
+@app.route("/healthz")
+def healthz():
+    return jsonify({"ok": True, "service": "vendasai"}), 200
 
 
 if __name__ == "__main__":
